@@ -36,14 +36,21 @@ class T3EBoard
     ここから自分で追加した部分
     */
     const int max_depth = 5;
-	void Search_Checkmate(int* Estimated_value);
-	void Search_Place_toProtect(int *Estimated_value);
+	int Estimated_value[BOARD_SIZE];
+	const int Line[8][3] = {
+		{0, 1, 2}, {3, 4, 5}, {6, 7, 8},
+		{0, 3, 6}, {1, 4, 7}, {2, 5, 8},
+		{0, 4, 8}, {2, 4, 6}
+	};
+	void Search_Checkmate();
+	void Search_Place_toProtect();
     //現在の盤の状況をみて，置けるかどうか判断する
     bool Can_Put_Value(int place, Int_List stone_place);
     //ミニマックス法で探索する
     int Min_Max(int depth, Int_List &stone_place);
 	//評価関数
 	int Evaluate(int depth, Int_List &stone_place);
+	//列，行，対角にどの程度丸または×が埋まっているか調べる
     /*
     ここまで自分が実装した部分
     */
@@ -186,7 +193,56 @@ int T3EBoard::Min_Max(int depth, Int_List &stone_place)
 
 int T3EBoard::Evaluate(int depth, Int_List &stone_place)
 {
-	return 1;
+	
+	int copy_board[BOARD_SIZE];
+	for(int i=0; i<BOARD_SIZE; i++){
+		copy_board[i] = 0;
+	}
+	std::list<int>::iterator p = stone_place.begin();
+	int count = 0;
+	while(p != stone_place.end()){
+		//自分のコマの時
+		if(count%2 == depth%2){
+			copy_board[*p] = 1;
+		}
+		else{
+			copy_board[*p] = -1;
+		}
+	}
+
+	int const bingo_point = 1000;
+	int const rearch_point = 100;
+	int const re_rearch_point = 10;
+
+	int value = 0;
+	int count_mystone = 0;
+	int count_yourstone = 0;
+	
+	int line_pattern = sizeof(Line) / sizeof(Line[0]);
+	int line_size = sizeof(Line[0])/ sizeof(int);
+
+	for(int i=0; i < line_pattern; i++){
+		count_mystone = 0;
+		count_yourstone = 0;
+		for(int j=0; j<line_size; j++){
+			if(Line[i][j] == 1)		count_mystone++;
+			else if(Line[i][j] == -1) count_yourstone++;
+		}
+		if(count_mystone == 3)	value += bingo_point;
+		else if(count_yourstone == 3) value += bingo_point/2;
+		else if(count_mystone == 2 && count_yourstone == 0) 
+			value += rearch_point;
+		else if(count_mystone == 0 && count_yourstone == 2){
+			value -= rearch_point;
+		}
+		else if(count_mystone == 1 && count_yourstone != 2){
+			value += re_rearch_point;
+		}
+		else if(count_mystone == 0 && count_yourstone == 1){
+			value -= re_rearch_point;
+		}
+	}
+	return value;
 }
  
 /*
@@ -194,7 +250,7 @@ int T3EBoard::Evaluate(int depth, Int_List &stone_place)
 リーチが発生している場合: 次に置くべき場所(0-8)を返す
 リーチが発生していない場合: -1を返す
 */
-void T3EBoard::Search_Checkmate(int *Estimated_value)
+void T3EBoard::Search_Checkmate()
 {
 	const int point = 100;	//条件を満たしたときに加算される点数
 	int copy_Board[BOARD_SIZE];	//盤面をコピーして保存する用の変数
@@ -276,7 +332,7 @@ void T3EBoard::Search_Checkmate(int *Estimated_value)
 リーチが発生している場合: 次に置くべき場所(0-8)を返す
 リーチが発生していない場合: -1を返す
 */
-void T3EBoard::Search_Place_toProtect(int *Estimated_value)
+void T3EBoard::Search_Place_toProtect()
 {
 	const int point = 50;	//条件を満たしたときに50点加算する
 	int copy_Board[BOARD_SIZE];	//盤面をコピーして保存する用の変数
