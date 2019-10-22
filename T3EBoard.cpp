@@ -2,11 +2,8 @@
 #include <time.h>
 #include <stdlib.h>
 #include <list>
-typedef std::list<int> Int_List;
-
-
-
-
+typedef std::list<int> Int_List; 
+ 
 // TicTacToeEx ゲーム管理クラス
 class T3EBoard
 {
@@ -31,11 +28,9 @@ class T3EBoard
 	int CPU();					// CPUの思考
 	int Human();				// 人間の手番
 	int CheckWin();				// 勝利判定
-
-    /*
-    ここから自分で追加した部分
-    */
-    const int max_depth = 5;
+ 
+	/*-----------------ここから自分で追加した部分------------------*/
+	const int max_depth = 3;
 	int Estimated_value[BOARD_SIZE];
 	const int Line[8][3] = {
 		{0, 1, 2}, {3, 4, 5}, {6, 7, 8},
@@ -44,21 +39,25 @@ class T3EBoard
 	};
 	void Search_Checkmate();
 	void Search_Place_toProtect();
-    //現在の盤の状況をみて，置けるかどうか判断する
-    bool Can_Put_Value(int place, Int_List stone_place);
-    //ミニマックス法で探索する
-    int Min_Max(int depth, Int_List &stone_place);
-	//評価関数
-	int Evaluate(int depth, Int_List &stone_place);
-	//列，行，対角にどの程度丸または×が埋まっているか調べる
-    /*
-    ここまで自分が実装した部分
-    */
+	//現在の盤の状況をみて，置けるかどうか判断する
+	bool Can_Put_Value(int place, Int_List stone_place);
+	//ミニマックス法で探索する
+	int Min_Max(int depth, Int_List& stone_place, bool is_first);
+	//評価関数(列，行，対角にどの程度丸または×が埋まっているか調べる)
+	int Evaluate(int depth, Int_List& stone_place, bool is_first);
+	//stone_placeの状態を返す(デバック用)
+	void Stone_Show(Int_List& stone_place);
+	//石が置かれている場所を，置かれた順に格納するリストを生成する
+	//ついでに，自分が先攻か後攻かを戻り値として返す
+	bool Build_Stoneplace(Int_List& stone_place);
+	/*-------------------ここまで自分が実装した部分------------------*/
 public:
 	T3EBoard();					// コンストラクタ
 	~T3EBoard();				// デストラクタ
 	void Play();				// ゲーム進行
 };
+
+
 
 // コンストラクタ
 T3EBoard::T3EBoard()
@@ -126,74 +125,129 @@ int T3EBoard::CPU()
 {
 	//どこに石が置かれたかを，置かれた順に記憶するリスト(関数化したい?)
 	Int_List stone_place;
-	for(int i = 0; i<MAX_PIECE_ON_BOARD; i++){
-		int stone_value;
-		if(m_Turn > MAX_PIECE_ON_BOARD) stone_value = i;
-		else stone_value = m_Turn - MAX_PIECE_ON_BOARD  + i;
+	//石が置かれている場所を，置かれた順に格納するリストを生成する
+	//ついでに，自分が先攻か後攻かを戻り値として返す
+	bool is_first = Build_Stoneplace(stone_place);
+	//デバック用
+	Stone_Show(stone_place);
+	return this->Min_Max(0, stone_place, is_first);
+}
+
+bool T3EBoard::Build_Stoneplace(Int_List& stone_place)
+{
+	//今までにおかれているコマの数(自分が先攻か後攻か判断するために用いる)
+	int num_stone = 0;
+	//stone_placeに一番最初に格納したコマの場所に入っていた値
+	int first_val = 0;
+	//置かれているコマの絶対値の中でもっとも小さい値と大きい値
+	int min_stone, max_stone; 
+	max_stone = m_Turn;
+	//6ターン目以降かどうかでmin_stoneの値は異なる
+	//---------------------m_Turn-3かどうかは再度考える必要あり----------------
+	if (m_Turn > MAX_PIECE_ON_BOARD) min_stone = m_Turn - 3;
+	else min_stone = 1;
+ 
+	//絶対値が小さいコマから各自コマの場所を保存していく
+	for(int stone_value = min_stone; stone_value<= max_stone; stone_value++){
 		for(int place=0; place<BOARD_SIZE; place++){
-			if(m_Board[place] == stone_value) stone_place.push_back(place);
+			if (m_Board[place] == stone_value) {
+				if(num_stone == 0) first_val = m_Board[place];
+				stone_place.push_back(place);
+				num_stone++;
+			}
 		}
 		for(int place = 0; place < BOARD_SIZE; place++){
-			if(m_Board[place] == -stone_value) stone_place.push_back(place);
+			if (m_Board[place] == -stone_value) {
+				if(num_stone == 0) first_val = m_Board[place];
+				stone_place.push_back(place);
+				num_stone++;
+			}
 		}
 	}
+
+	//m_Turnが3以下の時...今までのコマの数が偶数であったら先攻
+	//m_Turnが4より大きい時...first_valが正の値だったら先攻
+	//今までに置かれたコマの数が偶数であったら先攻
+	if(m_Turn <= MAX_PIECE_ON_BOARD){
+		if(num_stone % 2 == 0) 	return true;
+		else return false;
+	}
+	else{
+		if(first_val > 0)	return true;
+		else return false;
+	}
+}
+
+//stone_placeの状態を返す(デバック用)
+void T3EBoard::Stone_Show(Int_List& stone_place)
+{
+	std::list<int>::iterator p = stone_place.begin();
+	while (p != stone_place.end()) {
+		std::cout << *p;
+		p++;
+	}
+
+	std::cout << std::endl;
+}
+ 
+ 
+int T3EBoard::Min_Max(int depth, Int_List &stone_place, bool is_first)
+{
+	//探索が指定した深さまで達したら．その盤面を評価する
+	//勝ちが確定した時と負けが確定した時にも評価するようにするべき
+	//勝ち探索アルゴリズムと負け探索アルゴリズムを改良して使用
+	if(depth == max_depth)	return this->Evaluate(depth, stone_place, is_first);
+ 
+	int child_value;	//子ノードの評価値
+	static int best_place = -1;		//評価値のもっとも高い場所
+	static int value = -10000;		//現在のノードの評価値
+	//１回目の呼び出しの時(再帰呼び出しではなく，CPU()からの呼び出しの時)に初期化
+	if (depth == 0) {
+		best_place = -1;
+		value = -10000;
+	}
 	
-	return this->Min_Max(0, stone_place);
+	for(int place = 0; place < BOARD_SIZE; place++){
+		if (this->Can_Put_Value(place, stone_place)){
+			stone_place.push_back(place);
+			if(stone_place.size() > MAX_PIECE_ON_BOARD * 2 + 1)	
+				stone_place.pop_front();
+			
+			child_value = this->Min_Max(depth + 1, stone_place, is_first);
+			if(child_value > value){
+				value = child_value;
+				best_place = place;
+			}
+			//デバック用
+			//Stone_Show(stone_place, value);
+			stone_place.pop_back();
+		}
+	}
+ 
+	//ノードの深さが0まで戻ってきていたら，最適解を返す
+	if (depth == 0) {
+		std::cout << "best_place = " << best_place << std::endl;
+		return best_place;
+	}
+	//ノードの深さが0でないときは，その点での評価値を返す
+	else			return value;
 }
 
 bool T3EBoard::Can_Put_Value(int place, Int_List stone_place)
 {
     std::list<int>::iterator p = stone_place.begin();
-
-	while(p!=stone_place.begin()){
+ 
+	while(p!=stone_place.end()){
 		if(*p == place)	return false;
+		p++;
 	}
 	return true;
 }
+ 
 
-
-
-int T3EBoard::Min_Max(int depth, Int_List &stone_place)
-{
-	if(depth == max_depth)	return this->Evaluate(depth, stone_place);
-
-	
-	int best_value = 0;
-	int child_value = 0;
-
-	//自分のターンかどうか調べる
-	int is_myturn = 1 - depth % 2;
-	int value;
-	if(is_myturn)	value = 1000;
-	else value = -1000;
-	for(int place = 0; place < 9; place++){
-		if (this->Can_Put_Value(place, stone_place)){
-			stone_place.push_back(place);
-			if(m_Turn > MAX_PIECE_ON_BOARD)		stone_place.pop_front();
-			child_value = this->Min_Max(depth + 1, stone_place);
-			if(is_myturn){
-				if(child_value > value){
-					value = child_value;
-					best_value = place;
-				}
-			}
-			else{
-				if(child_value < value){
-					value = child_value;
-					best_value = place;
-				}
-			}
-			stone_place.pop_back();
-		}
-	}
-
-	if (depth == 0)		return best_value;
-	else			return value;
-}
-
-int T3EBoard::Evaluate(int depth, Int_List &stone_place)
-{
-	
+//depthが浅ければ浅いほど，　評価値が高くなるようにしたい
+int T3EBoard::Evaluate(int depth, Int_List &stone_place, bool is_first)
+{	
 	int copy_board[BOARD_SIZE];
 	for(int i=0; i<BOARD_SIZE; i++){
 		copy_board[i] = 0;
@@ -202,34 +256,40 @@ int T3EBoard::Evaluate(int depth, Int_List &stone_place)
 	int count = 0;
 	while(p != stone_place.end()){
 		//自分のコマの時
-		if(count%2 == depth%2){
-			copy_board[*p] = 1;
+		if (is_first) {
+			if (count % 2 == 0) copy_board[*p] = 1;
+			else copy_board[*p] = -1;
 		}
-		else{
-			copy_board[*p] = -1;
+		else {
+			if (count % 2 == 0) {
+				if (count % 2 == 0) copy_board[*p] = -1;
+				else copy_board[*p] = 1;
+			}
 		}
+		p++;
+		count++;
 	}
-
+ 
 	int const bingo_point = 1000;
 	int const rearch_point = 100;
 	int const re_rearch_point = 10;
-
+ 
 	int value = 0;
 	int count_mystone = 0;
 	int count_yourstone = 0;
 	
 	int line_pattern = sizeof(Line) / sizeof(Line[0]);
 	int line_size = sizeof(Line[0])/ sizeof(int);
-
+ 
 	for(int i=0; i < line_pattern; i++){
 		count_mystone = 0;
 		count_yourstone = 0;
 		for(int j=0; j<line_size; j++){
-			if(Line[i][j] == 1)		count_mystone++;
-			else if(Line[i][j] == -1) count_yourstone++;
+			if(copy_board[Line[i][j]] == 1)		count_mystone++;
+			else if(copy_board[Line[i][j]] == -1) count_yourstone++;
 		}
 		if(count_mystone == 3)	value += bingo_point;
-		else if(count_yourstone == 3) value += bingo_point/2;
+		else if(count_yourstone == 3) value -= bingo_point/2;
 		else if(count_mystone == 2 && count_yourstone == 0) 
 			value += rearch_point;
 		else if(count_mystone == 0 && count_yourstone == 2){
@@ -242,6 +302,7 @@ int T3EBoard::Evaluate(int depth, Int_List &stone_place)
 			value -= re_rearch_point;
 		}
 	}
+	//std::cout << "val = " << value << std::endl;
 	return value;
 }
  
@@ -495,13 +556,21 @@ void T3EBoard::ShowBoard()
 {
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		std::cout << (m_Board[i] == 0 ? "　" :
-			(m_Board[i] > 0 ? "○" : "×"));
+			(m_Board[i] > 0 ? "○ " : "× "));
 		if (i % BOARD_WIDTH < BOARD_WIDTH - 1) {
 			std::cout << " | ";
 		}
 		else {
 			std::cout << std::endl;
-			if (i < BOARD_SIZE - 1) std::cout << " ─ ┼ ─ ┼ ─" << std::endl;
+			if (i < BOARD_SIZE - 1) std::cout << " ─ ┼  ─  ┼ ─" << std::endl;
 		}
 	}
+}
+
+int main()
+{
+	T3EBoard board;
+	board.Play();
+ 
+	return 0;
 }
