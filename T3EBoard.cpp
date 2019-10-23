@@ -30,7 +30,7 @@ class T3EBoard
 	int CheckWin();				// 勝利判定
  
 	/*-----------------ここから自分で追加した部分------------------*/
-	const int max_depth = 3;
+	const int max_depth = 6;
 	int Estimated_value[BOARD_SIZE];
 	const int Line[8][3] = {
 		{0, 1, 2}, {3, 4, 5}, {6, 7, 8},
@@ -40,7 +40,7 @@ class T3EBoard
 	void Search_Checkmate();
 	void Search_Place_toProtect();
 	//現在の盤の状況をみて，置けるかどうか判断する
-	bool Can_Put_Value(int place, Int_List stone_place);
+	bool Can_Put_Value(int place, int pop_place, Int_List& stone_place);
 	//ミニマックス法で探索する
 	int Min_Max(int depth, Int_List& stone_place, bool is_first);
 	//評価関数(列，行，対角にどの程度丸または×が埋まっているか調べる)
@@ -174,7 +174,11 @@ bool T3EBoard::Build_Stoneplace(Int_List& stone_place)
 	}
 	else{
 		if(first_val > 0)	return true;
-		else return false;
+		else if(first_val < 0)return false;
+		else{
+			std::cout<<"Error in Build_Stonepace" << std::endl;
+			return false;
+		}
 	}
 }
 
@@ -199,30 +203,47 @@ int T3EBoard::Min_Max(int depth, Int_List &stone_place, bool is_first)
 	if(depth == max_depth)	return this->Evaluate(depth, stone_place, is_first);
  
 	int child_value;	//子ノードの評価値
-	static int best_place = -1;		//評価値のもっとも高い場所
-	static int value = -10000;		//現在のノードの評価値
+	int best_place = -1;		//評価値のもっとも高い場所
+	int value = -10000;		//現在のノードの評価値
 	//１回目の呼び出しの時(再帰呼び出しではなく，CPU()からの呼び出しの時)に初期化
 	if (depth == 0) {
 		best_place = -1;
 		value = -10000;
 	}
+	static int pop_place = -1;
+	if(depth == 0 && stone_place.size() > MAX_PIECE_ON_BOARD * 2){
+		pop_place = stone_place.front();
+	}
+	int pop_val = -1;
 	
 	for(int place = 0; place < BOARD_SIZE; place++){
-		if (this->Can_Put_Value(place, stone_place)){
+		if (this->Can_Put_Value(place, pop_place, stone_place)){
 			stone_place.push_back(place);
-			if(stone_place.size() > MAX_PIECE_ON_BOARD * 2 + 1)	
+			//よくわかっていない
+			if(stone_place.size() > MAX_PIECE_ON_BOARD * 2 + 1)	{
+				pop_val = stone_place.front();
 				stone_place.pop_front();
+			}
 			
 			child_value = this->Min_Max(depth + 1, stone_place, is_first);
+			/*
+			if(depth == 0){
+				std::cout << "value" << child_value << " place" << place << std::endl;
+				}
+			*/
 			if(child_value > value){
+				
 				value = child_value;
 				best_place = place;
 			}
 			//デバック用
 			//Stone_Show(stone_place, value);
+			if(pop_val != -1)	stone_place.push_front(pop_val);
 			stone_place.pop_back();
 		}
 	}
+	//if(depth == 0) Stone_Show(stone_place);
+	
  
 	//ノードの深さが0まで戻ってきていたら，最適解を返す
 	if (depth == 0) {
@@ -233,10 +254,10 @@ int T3EBoard::Min_Max(int depth, Int_List &stone_place, bool is_first)
 	else			return value;
 }
 
-bool T3EBoard::Can_Put_Value(int place, Int_List stone_place)
+bool T3EBoard::Can_Put_Value(int place, int pop_place, Int_List& stone_place)
 {
+	if(place == pop_place) return false;
     std::list<int>::iterator p = stone_place.begin();
- 
 	while(p!=stone_place.end()){
 		if(*p == place)	return false;
 		p++;
