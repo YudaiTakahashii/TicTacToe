@@ -30,26 +30,24 @@ class T3EBoard
 	int CheckWin();				// 勝利判定
  
 	/*-----------------ここから自分で追加した部分------------------*/
-	const int max_depth = 6;
-	int Estimated_value[BOARD_SIZE];
+	const int max_depth = 8;
 	const int Line[8][3] = {
 		{0, 1, 2}, {3, 4, 5}, {6, 7, 8},
 		{0, 3, 6}, {1, 4, 7}, {2, 5, 8},
 		{0, 4, 8}, {2, 4, 6}
 	};
-	void Search_Checkmate();
-	void Search_Place_toProtect();
+	
 	//現在の盤の状況をみて，置けるかどうか判断する
 	bool Can_Put_Value(int place, int pop_place, Int_List& stone_place);
 	//ミニマックス法で探索する
-	int Min_Max(int depth, Int_List& stone_place, bool is_first);
+	int Min_Max(int depth, Int_List& stone_place);
 	//評価関数(列，行，対角にどの程度丸または×が埋まっているか調べる)
-	int Evaluate(int depth, Int_List& stone_place, bool is_first);
+	int Evaluate(int depth, Int_List& stone_place);
 	//stone_placeの状態を返す(デバック用)
 	void Stone_Show(Int_List& stone_place);
 	//石が置かれている場所を，置かれた順に格納するリストを生成する
-	//ついでに，自分が先攻か後攻かを戻り値として返す
-	bool Build_Stoneplace(Int_List& stone_place);
+	void Build_Stoneplace(Int_List& stone_place);
+	bool Search_Win_or_Lose(Int_List& stone_place);
 	/*-------------------ここまで自分が実装した部分------------------*/
 public:
 	T3EBoard();					// コンストラクタ
@@ -57,8 +55,7 @@ public:
 	void Play();				// ゲーム進行
 };
 
-
-
+ 
 // コンストラクタ
 T3EBoard::T3EBoard()
 {
@@ -119,6 +116,8 @@ void T3EBoard::Play()
 	std::cin.get();	// 終了前のキー入力待ち
 }
  
+//------------------------------------ここから自分で実装--------------------------------
+ 
 // CPUの思考アルゴリズム
 // 戻り値：コマを打つ場所
 int T3EBoard::CPU()
@@ -126,21 +125,18 @@ int T3EBoard::CPU()
 	//どこに石が置かれたかを，置かれた順に記憶するリスト(関数化したい?)
 	Int_List stone_place;
 	//石が置かれている場所を，置かれた順に格納するリストを生成する
-	//ついでに，自分が先攻か後攻かを戻り値として返す
-	bool is_first = Build_Stoneplace(stone_place);
+	Build_Stoneplace(stone_place);
 	//デバック用
 	Stone_Show(stone_place);
-	return this->Min_Max(0, stone_place, is_first);
+	return this->Min_Max(0, stone_place);
 }
-
-bool T3EBoard::Build_Stoneplace(Int_List& stone_place)
+ 
+ 
+ 
+void T3EBoard::Build_Stoneplace(Int_List& stone_place)
 {
-	//今までにおかれているコマの数(自分が先攻か後攻か判断するために用いる)
-	int num_stone = 0;
-	//stone_placeに一番最初に格納したコマの場所に入っていた値
-	int first_val = 0;
 	//置かれているコマの絶対値の中でもっとも小さい値と大きい値
-	int min_stone, max_stone; 
+	int min_stone, max_stone;
 	max_stone = m_Turn;
 	//6ターン目以降かどうかでmin_stoneの値は異なる
 	//---------------------m_Turn-3かどうかは再度考える必要あり----------------
@@ -148,40 +144,20 @@ bool T3EBoard::Build_Stoneplace(Int_List& stone_place)
 	else min_stone = 1;
  
 	//絶対値が小さいコマから各自コマの場所を保存していく
-	for(int stone_value = min_stone; stone_value<= max_stone; stone_value++){
-		for(int place=0; place<BOARD_SIZE; place++){
+	for (int stone_value = min_stone; stone_value <= max_stone; stone_value++) {
+		for (int place = 0; place < BOARD_SIZE; place++) {
 			if (m_Board[place] == stone_value) {
-				if(num_stone == 0) first_val = m_Board[place];
 				stone_place.push_back(place);
-				num_stone++;
 			}
 		}
-		for(int place = 0; place < BOARD_SIZE; place++){
+		for (int place = 0; place < BOARD_SIZE; place++) {
 			if (m_Board[place] == -stone_value) {
-				if(num_stone == 0) first_val = m_Board[place];
 				stone_place.push_back(place);
-				num_stone++;
 			}
-		}
-	}
-
-	//m_Turnが3以下の時...今までのコマの数が偶数であったら先攻
-	//m_Turnが4より大きい時...first_valが正の値だったら先攻
-	//今までに置かれたコマの数が偶数であったら先攻
-	if(m_Turn <= MAX_PIECE_ON_BOARD){
-		if(num_stone % 2 == 0) 	return true;
-		else return false;
-	}
-	else{
-		if(first_val > 0)	return true;
-		else if(first_val < 0)return false;
-		else{
-			std::cout<<"Error in Build_Stonepace" << std::endl;
-			return false;
 		}
 	}
 }
-
+ 
 //stone_placeの状態を返す(デバック用)
 void T3EBoard::Stone_Show(Int_List& stone_place)
 {
@@ -190,312 +166,214 @@ void T3EBoard::Stone_Show(Int_List& stone_place)
 		std::cout << *p;
 		p++;
 	}
-
+ 
 	std::cout << std::endl;
 }
  
+/*
+Min-Maxによるゲーム木の探索
+引数
+depth : ノードの深さ
+stone_place : コマが置いてある場所を置いた順に格納するリスト
+is_first : 自分が先攻か後攻か調べる(評価関数の呼び出しで必要）
  
-int T3EBoard::Min_Max(int depth, Int_List &stone_place, bool is_first)
+戻り値
+CPU()からの呼び出し時 : 最適なコマの場所
+再帰呼び出しの時 : ノードの評価値
+*/
+int T3EBoard::Min_Max(int depth, Int_List& stone_place)
 {
 	//探索が指定した深さまで達したら．その盤面を評価する
 	//勝ちが確定した時と負けが確定した時にも評価するようにするべき
 	//勝ち探索アルゴリズムと負け探索アルゴリズムを改良して使用
-	if(depth == max_depth)	return this->Evaluate(depth, stone_place, is_first);
+	if (depth == max_depth || Search_Win_or_Lose(stone_place))	
+		return this->Evaluate(depth, stone_place);
  
 	int child_value;	//子ノードの評価値
 	int best_place = -1;		//評価値のもっとも高い場所
-	int value = -10000;		//現在のノードの評価値
-	//１回目の呼び出しの時(再帰呼び出しではなく，CPU()からの呼び出しの時)に初期化
-	if (depth == 0) {
-		best_place = -1;
-		value = -10000;
-	}
-	static int pop_place = -1;
-	if(depth == 0 && stone_place.size() > MAX_PIECE_ON_BOARD * 2){
+	int value;	//評価値
+	if(depth % 2 == 0)	value = -10000;
+	else value = 10000;
+	int pop_place = -1;	//次のターンに消えるコマ
+	if (depth == 0 && stone_place.size() > MAX_PIECE_ON_BOARD * 2) {
 		pop_place = stone_place.front();
 	}
+
 	int pop_val = -1;
-	
-	for(int place = 0; place < BOARD_SIZE; place++){
-		if (this->Can_Put_Value(place, pop_place, stone_place)){
+ 
+	for (int place = 0; place < BOARD_SIZE; place++) {
+		//盤の場所placeにコマがおける時
+		if (this->Can_Put_Value(place, pop_place, stone_place)) {
 			stone_place.push_back(place);
-			//よくわかっていない
-			if(stone_place.size() > MAX_PIECE_ON_BOARD * 2 + 1)	{
+			//次のターンに消えるコマがある時は，そのコマを一時的に削除
+			//削除するコマはpop_valに保存
+			if (stone_place.size() > MAX_PIECE_ON_BOARD * 2 + 1) {
 				pop_val = stone_place.front();
 				stone_place.pop_front();
 			}
-			
-			child_value = this->Min_Max(depth + 1, stone_place, is_first);
-			/*
-			if(depth == 0){
-				std::cout << "value" << child_value << " place" << place << std::endl;
+			//子ノードの評価値を計算する
+			child_value = this->Min_Max(depth + 1, stone_place);
+
+			//自分のノードの時は評価値valueを高い値に更新する
+			//相手のノードの時は評価値valueを低い値に更新する
+			if(depth % 2 == 0){
+				if (child_value > value) {
+					value = child_value;
+					best_place = place;
 				}
-			*/
-			if(child_value > value){
-				
-				value = child_value;
-				best_place = place;
 			}
-			//デバック用
-			//Stone_Show(stone_place, value);
-			if(pop_val != -1)	stone_place.push_front(pop_val);
+			else{
+				if (child_value < value) {
+					value = child_value;
+					best_place = place;
+				}
+			}
+			//一時的に削除したコマを元に戻す
+			if (pop_val != -1)	stone_place.push_front(pop_val);
+			//一時的に追加したコマを元に戻す
 			stone_place.pop_back();
 		}
 	}
-	//if(depth == 0) Stone_Show(stone_place);
-	
  
 	//ノードの深さが0まで戻ってきていたら，最適解を返す
 	if (depth == 0) {
 		std::cout << "best_place = " << best_place << std::endl;
+		std::cout << "best_value = " << value << std::endl;
 		return best_place;
 	}
 	//ノードの深さが0でないときは，その点での評価値を返す
-	else			return value;
+	else	return value;
 }
-
+ 
+/*
+盤面の指定した場所にコマが置けるかチェックする関数(Min-Max()内で用いる）
+引数
+place : 置きたい場所(この場所に置けるかチェックする）
+pop_place : 次の手で消えるコマ（stone_placeには格納されてない可能性があるが，そこには置けない）
+stone_place : コマが置いてある場所を置いた順に格納するリスト
+ 
+戻り値
+置ける場合 : true
+置かない場合 : false
+*/
 bool T3EBoard::Can_Put_Value(int place, int pop_place, Int_List& stone_place)
 {
-	if(place == pop_place) return false;
-    std::list<int>::iterator p = stone_place.begin();
-	while(p!=stone_place.end()){
-		if(*p == place)	return false;
+	if (place == pop_place) return false;
+	std::list<int>::iterator p = stone_place.begin();
+	while (p != stone_place.end()) {
+		if (*p == place)	return false;
 		p++;
 	}
 	return true;
 }
- 
 
-//depthが浅ければ浅いほど，　評価値が高くなるようにしたい
-int T3EBoard::Evaluate(int depth, Int_List &stone_place, bool is_first)
-{	
-	int copy_board[BOARD_SIZE];
-	for(int i=0; i<BOARD_SIZE; i++){
-		copy_board[i] = 0;
-	}
-	std::list<int>::iterator p = stone_place.begin();
-	int count = 0;
-	while(p != stone_place.end()){
-		//自分のコマの時
-		if (is_first) {
-			if (count % 2 == 0) copy_board[*p] = 1;
-			else copy_board[*p] = -1;
-		}
-		else {
-			if (count % 2 == 0) {
-				if (count % 2 == 0) copy_board[*p] = -1;
-				else copy_board[*p] = 1;
+bool T3EBoard::Search_Win_or_Lose(Int_List& stone_place) {
+	int count_mystone = 0;
+	int count_opponentstone = 0;
+	int count;
+	std::list<int>::iterator p;
+
+	int line_pattern = sizeof(Line) / sizeof(Line[0]);
+	int line_size = sizeof(Line[0]) / sizeof(int);
+ 
+	for (int i = 0; i < line_pattern; i++) {
+		count_mystone = 0;
+		count_opponentstone = 0;
+		for(int j = 0; j < line_size; j++) {
+			p = stone_place.begin();
+			if(stone_place.size() > 6)	p++;
+			count = 0;
+			while (p != stone_place.end()) {
+				if (Line[i][j] == *p) {
+					if (count % 2 == 0)	count_mystone++;
+					else count_opponentstone++;
+				}
+				p++;
+				count++;
 			}
 		}
-		p++;
+		if (count_mystone == 3 || count_opponentstone == 3) return true;
+	}
+	return false;
+}
+ 
+/*
+各ノードの評価値を返す関数
+引数
+depth : ノードの深さ
+stone_place : コマが置いてある場所を置いた順に格納するリスト
+is_first : 自分が先攻か後攻か調べる(評価関数の呼び出しで必要）
+ 
+戻り値
+各ノードの評価値
+*/
+//depthが浅ければ浅いほど，　評価値が高くなるようにしたい
+int T3EBoard::Evaluate(int depth, Int_List& stone_place)
+{
+	int const bingo_point = 10;
+	int const rearch_point = 1;
+ 
+	//---------最大深さまで到達せずに呼び出された(途中で勝敗は決まったとき)-----------
+	//深さが奇数...自分が勝利したことによって終了
+	//深さが偶数...相手が勝利したことによって終了
+	if(depth < max_depth){
+		if(depth % 2 == 0)	
+			return -bingo_point * (max_depth - depth) * 10;
+		else	
+			return bingo_point * (max_depth - depth) * 10;
+	}
+
+
+	//----------最大深さまで到達した時---------------------------
+	//その時の盤の優勢を定義して，それに応じた評価値を与える
+
+	//stone_placeを，実際の盤の様子に変換する
+	int copy_board[BOARD_SIZE];
+	for (int i = 0; i < BOARD_SIZE; i++) 	copy_board[i] = 0;
+	std::list<int>::iterator p = stone_place.begin();
+	p++;	//最初の要素は次に消えるコマなので評価しない
+	int count = 0;
+	while (p != stone_place.end()) {
+		if(max_depth % 2 == 0){
+			if(count % 2 == 0) copy_board[*p] = STONE1;
+			else copy_board[*p] = STONE2;
+		}
+		else{
+			if(count % 2 == 0) copy_board[*p] = STONE2;
+			else copy_board[*p] = STONE1;
+		}
 		count++;
+		p++;
 	}
  
-	int const bingo_point = 1000;
-	int const rearch_point = 100;
-	int const re_rearch_point = 10;
- 
-	int value = 0;
-	int count_mystone = 0;
-	int count_yourstone = 0;
 	
-	int line_pattern = sizeof(Line) / sizeof(Line[0]);
-	int line_size = sizeof(Line[0])/ sizeof(int);
+	int value = 0;	//評価値
+	//１列に自分のコマもしくは相手のコマがどれだけあるか調べる変数
+	int count_mystone, count_opponentstone = 0;
  
-	for(int i=0; i < line_pattern; i++){
+	//３目並べの縦・横・斜めのラインの本数(8)
+	int line_pattern = sizeof(Line) / sizeof(Line[0]);
+	//1ラインにおける要素数
+	int line_size = sizeof(Line[0]) / sizeof(int);
+ 
+	//各ラインにおける自分のコマと相手のコマの数を調べる
+	for (int i = 0; i < line_pattern; i++) {
 		count_mystone = 0;
-		count_yourstone = 0;
-		for(int j=0; j<line_size; j++){
-			if(copy_board[Line[i][j]] == 1)		count_mystone++;
-			else if(copy_board[Line[i][j]] == -1) count_yourstone++;
+		count_opponentstone = 0;
+		for (int j = 0; j < line_size; j++) {
+			if (copy_board[Line[i][j]] == 1)		count_mystone++;
+			else if (copy_board[Line[i][j]] == -1) count_opponentstone++;
 		}
-		if(count_mystone == 3)	value += bingo_point;
-		else if(count_yourstone == 3) value -= bingo_point/2;
-		else if(count_mystone == 2 && count_yourstone == 0) 
-			value += rearch_point;
-		else if(count_mystone == 0 && count_yourstone == 2){
-			value -= rearch_point;
-		}
-		else if(count_mystone == 1 && count_yourstone != 2){
-			value += re_rearch_point;
-		}
-		else if(count_mystone == 0 && count_yourstone == 1){
-			value -= re_rearch_point;
-		}
+		if (count_mystone == 2)  value += rearch_point;
+		else if (count_opponentstone == 2)  value -= rearch_point;
 	}
-	//std::cout << "val = " << value << std::endl;
 	return value;
 }
  
-/*
-リーチが発生しているところがあるか調べる関数(つまり、次に置くと勝つ手があるかしらべる)
-リーチが発生している場合: 次に置くべき場所(0-8)を返す
-リーチが発生していない場合: -1を返す
-*/
-void T3EBoard::Search_Checkmate()
-{
-	const int point = 100;	//条件を満たしたときに加算される点数
-	int copy_Board[BOARD_SIZE];	//盤面をコピーして保存する用の変数
-	for (int i = 0; i < BOARD_SIZE; i++) copy_Board[i] = m_Board[i];
  
-	//CPUが〇と×のどちらを打つのか調べる（〇...STONE1=1, ×...STONE2=-1)
-	int sign = (m_NextPlayer == PLAYER1 ? STONE1 : STONE2);
+
  
-	// 次に消えるコマを見つけて、一時的に消去する
-	int deleting_place = -1;
-	if (m_Turn > MAX_PIECE_ON_BOARD) {
-		int deleting = (m_Turn - MAX_PIECE_ON_BOARD) * sign;
-		for (int i = 0; i < BOARD_SIZE; i++) {
-			if (copy_Board[i] == deleting) copy_Board[i] = NONE;
-			deleting_place = i;
-		}
-	}
- 
-	//コンピューターが後攻の時、〇と×を入れ替える(次のifでの条件判定のため）
-	if (sign == STONE2) {
-		for (int i = 0; i < BOARD_SIZE; i++)		copy_Board[i] = -1 * copy_Board[i];
-	}
- 
-	//どの目に置くと勝てるのかそれぞれ調べる
-	//斜め方向1
-	int empty_place;		//まだ何も置いていないような場所を保存する
-	int count = 0;	//それぞれの列、行、対角線にどのくらい自分のコマがおいてあるか数える
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		if (copy_Board[row * BOARD_WIDTH + row] > 0) count++;
-		else if (copy_Board[row * BOARD_WIDTH + row] == 0) empty_place = row * BOARD_WIDTH + row;
-	}
-	if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-	else {
-		count = 0;
-		empty_place = -1;
-	}
- 
-	// 斜め方向2
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		if (copy_Board[row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row)] > 0) count++;
-		else if (copy_Board[row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row)] == 0) empty_place = row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row);
-	}
-	if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-	else {
-		count = 0;
-		empty_place = -1;
-	}
- 
-	// 横方向
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		for (int col = 0; col < BOARD_WIDTH; col++) {
-			if (copy_Board[row * BOARD_WIDTH + col] > 0) count++;
-			else if (copy_Board[row * BOARD_WIDTH + col] == 0) empty_place = row * BOARD_WIDTH + col;
-		}
-		if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-		else {
-			count = 0;
-			empty_place = -1;
-		}
-	}
-	
- 
-	// 縦方向
-	for (int col = 0; col < BOARD_WIDTH; col++) {
-		for (int row = 0; row < BOARD_HEIGHT; row++) {
-			if (copy_Board[row * BOARD_WIDTH + col] > 0) count++;
-			else if (copy_Board[row * BOARD_WIDTH + col] == 0) empty_place = row * BOARD_WIDTH + col;
-		}
-		if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-		else {
-			count = 0;
-			empty_place = -1;
-		}
-	}
-}
- 
-/*
-相手にリーチが発生しているか調べる関数(そこに置かないと負けてしまう場所があるか調べる)
-リーチが発生している場合: 次に置くべき場所(0-8)を返す
-リーチが発生していない場合: -1を返す
-*/
-void T3EBoard::Search_Place_toProtect()
-{
-	const int point = 50;	//条件を満たしたときに50点加算する
-	int copy_Board[BOARD_SIZE];	//盤面をコピーして保存する用の変数
-	for (int i = 0; i < BOARD_SIZE; i++) copy_Board[i] = m_Board[i];
- 
-	//CPUが〇と×のどちらを打つのか調べる（〇...STONE1=1, ×...STONE2=-1)
-	int sign = (m_NextPlayer == PLAYER1 ? STONE1 : STONE2);
- 
-	//次の相手のターンが何番目なのか調べる
-	int Next_Turn_of_Opponent;
-	if (sign == STONE1)	Next_Turn_of_Opponent = m_Turn;
-	else Next_Turn_of_Opponent = m_Turn + 1;
- 
-	// 相手の次に消えるコマを見つけて、一時的に消去する
-	int deleting_place = -1;
-	if (Next_Turn_of_Opponent > MAX_PIECE_ON_BOARD) {
-		int deleting = (Next_Turn_of_Opponent - MAX_PIECE_ON_BOARD) * sign * (-1);
-		for (int i = 0; i < BOARD_SIZE; i++) {
-			if (copy_Board[i] == deleting) copy_Board[i] = NONE;
-			deleting_place = i;
-		}
-	}
- 
-	//コンピューターが先攻の時、〇と×を入れ替える(次のifでの条件判定のため）
-	//相手の手が常に〇を出しているように変更させる
-	if (sign == STONE1) {
-		for (int i = 0; i < BOARD_SIZE; i++)		copy_Board[i] = -1 * copy_Board[i];
-	}
- 
-	//どの手を打たないと負けるか調べる
-	//斜め方向1
-	int empty_place = -1;		//まだ何も置いていないような場所を保存する
-	int count = 0;	//それぞれの列、行、対角線にどのくらい相手のコマがおいてあるか数える
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		if (copy_Board[row * BOARD_WIDTH + row] > 0) count++;
-		else if (copy_Board[row * BOARD_WIDTH + row] == 0) empty_place = row * BOARD_WIDTH + row;
-	}
-	if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-	else {
-		count = 0;
-		empty_place = -1;
-	}
- 
-	// 斜め方向2
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		if (copy_Board[row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row)] > 0) count++;
-		else if (copy_Board[row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row)] == 0) empty_place = row * BOARD_WIDTH + (BOARD_HEIGHT - 1 - row);
-	}
-	if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-	else {
-		count = 0;
-		empty_place = -1;
-	}
- 
-	// 横方向
-	for (int row = 0; row < BOARD_HEIGHT; row++) {
-		for (int col = 0; col < BOARD_WIDTH; col++) {
-			if (copy_Board[row * BOARD_WIDTH + col] > 0) count++;
-			else if (copy_Board[row * BOARD_WIDTH + col] == 0) empty_place = row * BOARD_WIDTH + col;
-		}
-		if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-		else {
-			count = 0;
-			empty_place = -1;
-		}
-	}
- 
- 
-	// 縦方向
-	for (int col = 0; col < BOARD_WIDTH; col++) {
-		for (int row = 0; row < BOARD_HEIGHT; row++) {
-			if (copy_Board[row * BOARD_WIDTH + col] > 0) count++;
-			else if (copy_Board[row * BOARD_WIDTH + col] == 0) empty_place = row * BOARD_WIDTH + col;
-		}
-		if (count == 2 && empty_place > 0 && empty_place != deleting_place)	Estimated_value[empty_place] += point;
-		else {
-			count = 0;
-			empty_place = -1;
-		}
-	}
-}
+//------------------------------------------ここまで自分で実装----------------------------------------
  
 // 人間の手番
 // 戻り値：コマを打つ場所
@@ -588,6 +466,7 @@ void T3EBoard::ShowBoard()
 	}
 }
 
+ 
 int main()
 {
 	T3EBoard board;
